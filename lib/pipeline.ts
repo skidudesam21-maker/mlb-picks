@@ -12,7 +12,7 @@ import {
   unitsWon,
 } from "./odds";
 import { analyzeNRFI } from "./models/nrfi";
-import { analyzeMoneyline } from "./models/moneyline";
+import { analyzeMoneyline, isAcceptableMLOdds } from "./models/moneyline";
 import { analyzeHitProps, analyzeStrikeoutProps } from "./models/props";
 import { generateWriteup, confidenceToGrade } from "./ai";
 import {
@@ -55,13 +55,18 @@ export async function generateAllPicks(): Promise<{
   const season = currentSeason();
 
   const schedule = await getScheduleForDate(date);
-  const playable = schedule.filter(
-    (g: any) =>
-      g.home?.probablePitcher &&
-      g.away?.probablePitcher &&
-      g.status !== "Final" &&
-      g.detailedState !== "Postponed"
-  );
+  const now = Date.now();
+  const playable = schedule.filter((g: any) => {
+    if (!g.home?.probablePitcher || !g.away?.probablePitcher) return false;
+    if (g.status === "Final" || g.status === "Live" || g.status === "In Progress") return false;
+    if (g.detailedState === "Postponed" || g.detailedState === "Suspended" || g.detailedState === "Cancelled") return false;
+    // Exclude any game whose first pitch has already happened (or is within 5 minutes).
+    if (g.gameDate) {
+      const gameTs = new Date(g.gameDate).getTime();
+      if (gameTs - now < 5 * 60 * 1000) return false;
+    }
+    return true;
+  });
 
   // Pull odds
   const [gameOdds, firstInningOdds] = await Promise.all([
@@ -95,7 +100,11 @@ export async function generateAllPicks(): Promise<{
       const awayML = ev ? extractMoneyline(ev, g.away.name)?.price ?? null : null;
       const book = ev ? pickBestBook(ev.bookmakers ?? [])?.key ?? null : null;
       const a = await analyzeMoneyline(g, season, homeML, awayML);
-      if (a) mlResults.push({ analysis: { ...a, book }, odds: a.odds });
+      if (!a) continue;
+      if (a.skipReason) continue; // e.g. missing team stats
+      // Enforce odds range -250 to +180
+      if (!isAcceptableMLOdds(a.odds)) continue;
+      mlResults.push({ analysis: { ...a, book }, odds: a.odds });
     } catch (e) {
       console.error("ML analysis failed for", g.gamePk, e);
     }

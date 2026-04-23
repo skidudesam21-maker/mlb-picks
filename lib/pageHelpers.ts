@@ -9,8 +9,29 @@ export async function safeLatest(category: string): Promise<PickRow[]> {
   }
 }
 
-export function formatPickDate(dateStr: string | undefined): string {
-  if (!dateStr) return "";
-  const d = new Date(dateStr + "T12:00:00Z");
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+function coerceDate(v: any): Date | null {
+  if (!v) return null;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if (typeof v === "string") {
+    const iso = v.length === 10 ? `${v}T12:00:00Z` : v;
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+export function formatPickDate(dateValue: any): string {
+  const d = coerceDate(dateValue);
+  if (!d) return "";
+  return d.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function formatPickDateShort(dateValue: any): string {
+  const d = coerceDate(dateValue);
+  if (!d) return "";
+  return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" });
 }

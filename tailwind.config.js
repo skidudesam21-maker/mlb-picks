@@ -7,37 +7,43 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        ink: {
-          950: "#07090b",
-          900: "#0b0e12",
-          800: "#11161c",
-          700: "#1a212a",
-          600: "#2a333f",
+        // Lighter grey canvas with a slight warm cast
+        bg: {
+          950: "#17191c",   // page background
+          900: "#1c1f23",   // card interior
+          800: "#24282d",   // elevated card
+          700: "#2e333a",   // hover / border-strong
+          600: "#3c424a",   // subtle border
+          500: "#525963",   // muted text
+          400: "#7a818c",   // secondary text
         },
-        gold: {
-          400: "#e8c26a",
-          500: "#d4a73d",
-          600: "#b8891f",
+        paper: {
+          100: "#e4e6ea",   // primary text
+          200: "#c9ccd2",   // body text
+          300: "#a5a9b2",   // meta text
         },
-        turf: {
-          400: "#4ade80",
-          500: "#22c55e",
-          600: "#16a34a",
-          700: "#15803d",
+        // Lighter warm red accents
+        red: {
+          300: "#ff8b8b",   // hover
+          400: "#ff6b6b",   // primary accent
+          500: "#ef4f4f",   // strong
+          600: "#d93a3a",   // loss indicator
         },
-        blood: {
-          500: "#ef4444",
-          600: "#dc2626",
+        // Kept subtle so red stays dominant
+        good: {
+          400: "#7ab87a",   // muted win green
+          500: "#5ea45e",
         },
       },
       fontFamily: {
-        display: ["var(--font-display)", "serif"],
-        sans: ["var(--font-body)", "system-ui", "sans-serif"],
-        mono: ["var(--font-mono)", "monospace"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        gold: "0 0 40px -10px rgba(212, 167, 61, 0.4)",
-        card: "0 4px 24px -8px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255,255,255,0.04)",
+        card: "0 1px 0 rgba(255,255,255,0.03) inset, 0 4px 20px -8px rgba(0,0,0,0.4)",
+        "card-lift": "0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 28px -12px rgba(0,0,0,0.5)",
+        "red-glow": "0 0 0 1px rgba(255,107,107,0.5), 0 8px 28px -12px rgba(255,107,107,0.25)",
       },
     },
   },

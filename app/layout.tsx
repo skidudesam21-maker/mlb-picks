@@ -1,24 +1,28 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import Nav from "@/components/Nav";
+import Header from "@/components/Header";
 
 export const metadata: Metadata = {
-  title: "Diamond Edge — MLB Analytical Picks",
-  description: "Daily AI-driven MLB picks: NRFI, moneyline, and player props with full factor writeups.",
+  title: "Skogspicks — MLB Analytics",
+  description: "Daily MLB analytical picks: NRFI, moneyline, and player props, with full factor breakdowns and pick tracking.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <Nav />
-        <main className="relative max-w-6xl mx-auto px-5 pt-10 pb-24">{children}</main>
-        <footer className="max-w-6xl mx-auto px-5 py-10 text-xs text-ink-600 font-mono tracking-widest uppercase border-t border-ink-700">
-          <div className="flex justify-between items-center gap-4">
-            <span>© Diamond Edge · Picks auto-generated daily · Entertainment purposes only</span>
-            <span className="hidden md:inline">Gamble responsibly · 1-800-GAMBLER</span>
-          </div>
-        </footer>
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <main className="flex-1 max-w-6xl w-full mx-auto px-5 pt-8 pb-24">
+            {children}
+          </main>
+          <footer className="border-t border-bg-700/60 mt-auto">
+            <div className="max-w-6xl mx-auto px-5 py-8 font-mono text-[11px] tracking-[0.2em] uppercase text-bg-500 flex flex-wrap items-center justify-between gap-4">
+              <span>© Skogspicks · picks auto-generated daily</span>
+              <span>entertainment only · 1-800-GAMBLER</span>
+            </div>
+          </footer>
+        </div>
       </body>
     </html>
   );

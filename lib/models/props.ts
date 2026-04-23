@@ -190,10 +190,12 @@ async function evalHitter(
     projPA: pa,
   });
 
-  // Small-sample guard
-  if (safeNum(stats.season.atBats, 0) < 40) return null;
+  // Small-sample guard — require 50+ AB
+  if (safeNum(stats.season.atBats, 0) < 50) return null;
+  // Guard against bad split data
+  if (opsSplit <= 0 || opsSplit > 1.5) return null;
 
-  const confidence = Math.max(30, Math.min(96, Math.round(prob * 105)));
+  const confidence = Math.max(30, Math.min(90, Math.round(prob * 100)));
 
   return {
     gamePk: game.gamePk,
@@ -269,9 +271,10 @@ function buildKPick(
   if (!p?.season) return null;
 
   const ip = safeNum(p.season.inningsPitched, 0);
-  if (ip < 25) return null; // no valid pitcher sample
+  if (ip < 30) return null; // need a real sample
 
   const k9 = safeNum(p.season.strikeoutsPer9Inn, 8);
+  if (k9 < 6) return null; // don't pick low-K guys
   const so = safeNum(p.season.strikeOuts, 0);
   const bf = safeNum(p.season.battersFaced, 1);
   const kpct = so / Math.max(1, bf);
@@ -300,7 +303,7 @@ function buildKPick(
 
   // Confidence: distance from line in Ks, scaled.
   const diff = projK - chosenLine;
-  const confidence = Math.max(30, Math.min(96, Math.round(50 + diff * 18)));
+  const confidence = Math.max(30, Math.min(88, Math.round(50 + diff * 16)));
 
   return {
     gamePk,

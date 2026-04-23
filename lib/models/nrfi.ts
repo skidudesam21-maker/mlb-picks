@@ -42,11 +42,26 @@ function safeNum(v: any, fallback = 0): number {
 function pitcherFirstInningScore(p: any): number {
   // Higher = better for NRFI. 0-40 scale.
   if (!p?.season) return 15;
-  const era = safeNum(p.season.era, 4.5);
-  const whip = safeNum(p.season.whip, 1.3);
-  const k9 = safeNum(p.season.strikeoutsPer9Inn, 8);
-  const bb9 = safeNum(p.season.walksPer9Inn, 3);
-  const hr9 = safeNum(p.season.homeRunsPer9, 1.2);
+  const ip = safeNum(p.season.inningsPitched, 0);
+  // Reject completely empty stats
+  if (ip === 0) return 15;
+
+  // Sample-size weighting: small samples get blended with league averages.
+  const trust = Math.max(0.1, Math.min(1, (ip - 5) / 30));
+  const LG_ERA = 4.2, LG_WHIP = 1.3, LG_K9 = 8.5, LG_BB9 = 3.0, LG_HR9 = 1.15;
+
+  const rawERA = safeNum(p.season.era, LG_ERA);
+  const rawWHIP = safeNum(p.season.whip, LG_WHIP);
+  const rawK9 = safeNum(p.season.strikeoutsPer9Inn, LG_K9);
+  const rawBB9 = safeNum(p.season.walksPer9Inn, LG_BB9);
+  const rawHR9 = safeNum(p.season.homeRunsPer9, LG_HR9);
+
+  // Cap extreme values (e.g. 12 ERA in 3 IP) and blend toward league prior.
+  const era = Math.min(8, rawERA) * trust + LG_ERA * (1 - trust);
+  const whip = Math.min(2.2, rawWHIP) * trust + LG_WHIP * (1 - trust);
+  const k9 = rawK9 * trust + LG_K9 * (1 - trust);
+  const bb9 = Math.min(7, rawBB9) * trust + LG_BB9 * (1 - trust);
+  const hr9 = Math.min(3, rawHR9) * trust + LG_HR9 * (1 - trust);
 
   // Baseline 20, scale by performance.
   let score = 20;
@@ -73,20 +88,25 @@ function recentFormScore(log: any[]): number {
 }
 
 function lineupThreatScore(hitters: any[], pitcherThrows: string): number {
-  // Higher = more dangerous lineup top = BAD for NRFI. Returns -12..0.
+  // Higher OPS = more dangerous lineup top = BAD for NRFI. Returns -12..0.
   if (!hitters?.length) return -3;
   let ops = 0;
   let count = 0;
-  const splitKey = pitcherThrows === "L" ? "vl" : "vr"; // vs LHP or vs RHP
+  const splitKey = pitcherThrows === "L" ? "vl" : "vr";
   for (const h of hitters.slice(0, 4)) {
+    // Only count hitters with sufficient sample (20+ AB season).
+    const seasonAB = safeNum(h?.season?.atBats, 0);
+    if (seasonAB < 20) continue;
     const split = h?.[splitKey] ?? h?.season;
     if (!split) continue;
-    ops += safeNum(split.ops, 0.7);
+    const opsVal = safeNum(split.ops, 0);
+    // Reject zero/absurd OPS — missing data.
+    if (opsVal <= 0 || opsVal > 1.5) continue;
+    ops += opsVal;
     count++;
   }
   if (!count) return -3;
   const avgOPS = ops / count;
-  // .800 OPS lineup top = heavy threat. .650 = weak.
   return Math.max(-12, Math.min(0, (0.72 - avgOPS) * 30));
 }
 
@@ -154,8 +174,13 @@ export async function analyzeNRFI(game: Game, season: number): Promise<NRFIAnaly
     homePScore + awayPScore + homeForm + awayForm +
     awayLineupThreat + homeLineupThreat + parkAdj + weatherAdj;
 
-  // Map roughly 10..85 raw range to 30..97 confidence.
-  const confidence = Math.max(30, Math.min(97, Math.round(raw * 1.15 + 15)));
+  // Sample-size penalty: if either pitcher has < 10 IP, reduce confidence.
+  const homeIP = safeNum(homeStats?.season?.inningsPitched, 0);
+  const awayIP = safeNum(awayStats?.season?.inningsPitched, 0);
+  const samplePenalty = (homeIP < 10 ? -6 : 0) + (awayIP < 10 ? -6 : 0);
+
+  // Map raw range to 35..88 confidence (max 88 — never A+ on an NRFI without elite signals).
+  const confidence = Math.max(30, Math.min(88, Math.round(raw * 1.0 + 15 + samplePenalty)));
 
   const factors: NRFIFactor[] = [
     {

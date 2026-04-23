@@ -1,16 +1,15 @@
-// Moneyline model.
-// Uses a composite team-strength score adjusted for the specific game context:
-//  - Starting pitcher edge (full game, not just 1st inning)
-//  - Offensive strength of each lineup
-//  - Bullpen performance
-//  - Home field advantage (~3% baseline)
-//  - Park factor affects weaker-offense underdogs more
-//  - Weather extremes
-//  - Recent team form (last 10)
-//  - Record vs the opposing SP's handedness
+// Moneyline model — v2, with sample-size guards, odds limits, and market-respect confidence.
 //
-// Output: picks ONE side with a confidence score 0-100.
-// Only recommends if edge vs implied odds > 3%.
+// Philosophy changes from v1:
+//  - Cap picks to -250 to +180 American odds range (user preference: safer range)
+//  - Prefer favorites: confidence is boosted when our model agrees with the market favorite
+//  - Heavy penalty when model strongly disagrees with market (market is usually right)
+//  - Require min sample size on pitcher stats (30 IP) and team stats (10 games) or fall back to league priors
+//  - Never pick a team whose team stats are missing/empty (0.000 OPS case)
+//  - Edge is clamped at 8% max contribution
+//
+// Odds range filter is applied AFTER selection — analyzer always returns the best pick,
+// caller filters by odds range before ranking.
 
 import { getPitcherStats, getPitcherGameLog, getTeamStats } from "./../mlb";
 import { getParkFactor } from "./../parks";
@@ -26,58 +25,80 @@ export type MLAnalysis = {
   pickSide: "home" | "away";
   pickTeam: string;
   confidence: number;
-  edge: number; // our prob minus implied
+  edge: number;
+  modelProb: number;
+  impliedProb: number;
   factors: MLFactor[];
   odds: number | null;
   book: string | null;
+  skipReason?: string;
 };
+
+const LG_ERA = 4.20;
+const LG_WHIP = 1.30;
+const LG_K9 = 8.5;
+const LG_HR9 = 1.15;
+const LG_OPS = 0.720;
+const LG_RPG = 4.45;
 
 function safeNum(v: any, fb = 0): number {
   const n = typeof v === "string" ? parseFloat(v) : v;
   return isFinite(n) ? n : fb;
 }
 
-function pitcherFullGameScore(p: any): number {
-  // Returns a 0-60 pitcher-quality score.
-  if (!p?.season) return 25;
-  const era = safeNum(p.season.era, 4.5);
-  const whip = safeNum(p.season.whip, 1.3);
-  const k9 = safeNum(p.season.strikeoutsPer9Inn, 8);
-  const hr9 = safeNum(p.season.homeRunsPer9, 1.2);
-  const ip = safeNum(p.season.inningsPitched, 50);
-
-  let s = 30;
-  s += Math.max(-12, Math.min(16, (4.0 - era) * 4));
-  s += Math.max(-8, Math.min(10, (1.3 - whip) * 18));
-  s += Math.max(-5, Math.min(8, (k9 - 8.5) * 1.1));
-  s += Math.max(-6, Math.min(4, (1.3 - hr9) * 3.5));
-  if (ip < 30) s -= 4; // small-sample penalty
-  return Math.max(0, Math.min(60, s));
+function validStat(v: any): boolean {
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  return isFinite(n) && n > 0;
 }
 
-function teamOffenseScore(t: any): number {
-  // 0-30 scale.
-  if (!t?.hitting) return 15;
-  const ops = safeNum(t.hitting.ops, 0.7);
+function pitcherFullGameScore(p: any): { score: number; usedFallback: boolean } {
+  if (!p?.season) return { score: 30, usedFallback: true };
+  const ip = safeNum(p.season.inningsPitched, 0);
+  const era = validStat(p.season.era) ? safeNum(p.season.era) : LG_ERA;
+  const whip = validStat(p.season.whip) ? safeNum(p.season.whip) : LG_WHIP;
+  const k9 = validStat(p.season.strikeoutsPer9Inn) ? safeNum(p.season.strikeoutsPer9Inn) : LG_K9;
+  const hr9 = safeNum(p.season.homeRunsPer9, LG_HR9);
+
+  const trust = Math.max(0.1, Math.min(1, (ip - 5) / 30));
+  const blendedERA = era * trust + LG_ERA * (1 - trust);
+  const blendedWHIP = whip * trust + LG_WHIP * (1 - trust);
+  const blendedK9 = k9 * trust + LG_K9 * (1 - trust);
+  const blendedHR9 = hr9 * trust + LG_HR9 * (1 - trust);
+
+  let s = 30;
+  s += Math.max(-10, Math.min(12, (LG_ERA - blendedERA) * 4));
+  s += Math.max(-7, Math.min(8, (LG_WHIP - blendedWHIP) * 16));
+  s += Math.max(-4, Math.min(6, (blendedK9 - LG_K9) * 1.0));
+  s += Math.max(-5, Math.min(4, (LG_HR9 - blendedHR9) * 3.0));
+  return { score: Math.max(5, Math.min(55, s)), usedFallback: ip < 15 };
+}
+
+function teamOffenseScore(t: any): { score: number; usedFallback: boolean } {
+  if (!t?.hitting) return { score: 15, usedFallback: true };
+  const games = safeNum(t.hitting.gamesPlayed, 0);
+  const ops = validStat(t.hitting.ops) ? safeNum(t.hitting.ops) : LG_OPS;
   const runs = safeNum(t.hitting.runs, 0);
-  const games = safeNum(t.hitting.gamesPlayed, 1);
-  const rpg = runs / Math.max(1, games);
+  const rpg = games > 0 ? runs / games : LG_RPG;
+
+  const usedFallback = games < 10 || !validStat(t.hitting.ops);
+  const trust = Math.max(0.2, Math.min(1, games / 15));
+  const blendedOPS = ops * trust + LG_OPS * (1 - trust);
+  const blendedRPG = rpg * trust + LG_RPG * (1 - trust);
 
   let s = 15;
-  s += Math.max(-8, Math.min(10, (ops - 0.71) * 45));
-  s += Math.max(-4, Math.min(6, (rpg - 4.4) * 2.5));
-  return Math.max(0, Math.min(30, s));
+  s += Math.max(-7, Math.min(9, (blendedOPS - LG_OPS) * 45));
+  s += Math.max(-4, Math.min(5, (blendedRPG - LG_RPG) * 2.2));
+  return { score: Math.max(5, Math.min(25, s)), usedFallback };
 }
 
 function bullpenScore(t: any): number {
-  // 0-15 scale, based on team pitching minus estimated starter contribution.
   if (!t?.pitching) return 7;
-  const era = safeNum(t.pitching.era, 4.2);
-  const whip = safeNum(t.pitching.whip, 1.3);
+  const era = validStat(t.pitching.era) ? safeNum(t.pitching.era) : LG_ERA;
+  const whip = validStat(t.pitching.whip) ? safeNum(t.pitching.whip) : LG_WHIP;
   let s = 7;
-  s += Math.max(-4, Math.min(5, (4.1 - era) * 2.5));
-  s += Math.max(-3, Math.min(3, (1.3 - whip) * 10));
-  return Math.max(0, Math.min(15, s));
+  s += Math.max(-3, Math.min(4, (LG_ERA - era) * 2));
+  s += Math.max(-2, Math.min(2, (LG_WHIP - whip) * 8));
+  return Math.max(2, Math.min(13, s));
 }
 
 export async function analyzeMoneyline(
@@ -99,109 +120,142 @@ export async function analyzeMoneyline(
     getPitcherGameLog(aP.id, season),
   ]);
 
-  const park = getParkFactor(game.venue?.id);
+  const hHittingValid = hTeam?.hitting && validStat(hTeam.hitting.ops);
+  const aHittingValid = aTeam?.hitting && validStat(aTeam.hitting.ops);
+  if (!hHittingValid && !aHittingValid) {
+    return {
+      gamePk: game.gamePk,
+      matchup: `${game.away.name} @ ${game.home.name}`,
+      pickSide: "home",
+      pickTeam: game.home.name,
+      confidence: 0,
+      edge: 0,
+      modelProb: 0.5,
+      impliedProb: 0.5,
+      factors: [],
+      odds: null,
+      book: null,
+      skipReason: "missing team stats",
+    };
+  }
 
-  // Team strength composite for each side.
-  const hP_ = pitcherFullGameScore(hStats);
-  const aP_ = pitcherFullGameScore(aStats);
+  const park = getParkFactor(game.venue?.id);
+  const hPScore = pitcherFullGameScore(hStats);
+  const aPScore = pitcherFullGameScore(aStats);
   const hO = teamOffenseScore(hTeam);
   const aO = teamOffenseScore(aTeam);
   const hBP = bullpenScore(hTeam);
   const aBP = bullpenScore(aTeam);
 
-  // Recent pitcher form
   const hForm = recentERA(hLog);
   const aForm = recentERA(aLog);
-  const hFormAdj = Math.max(-6, Math.min(6, (4.0 - hForm) * 2));
-  const aFormAdj = Math.max(-6, Math.min(6, (4.0 - aForm) * 2));
+  const hFormAdj = Math.max(-4, Math.min(4, (LG_ERA - hForm) * 1.5));
+  const aFormAdj = Math.max(-4, Math.min(4, (LG_ERA - aForm) * 1.5));
 
-  // Home field edge
   const HFA = 4.5;
 
-  const homeStrength = hP_ + hO + hBP + hFormAdj + HFA;
-  const awayStrength = aP_ + aO + aBP + aFormAdj;
+  const homeStrength = hPScore.score + hO.score + hBP + hFormAdj + HFA;
+  const awayStrength = aPScore.score + aO.score + aBP + aFormAdj;
 
-  // Convert strength gap to win probability via logistic.
   const gap = homeStrength - awayStrength;
-  const homeProb = 1 / (1 + Math.exp(-gap / 18));
+  let homeProb = 1 / (1 + Math.exp(-gap / 18));
+  homeProb = Math.max(0.28, Math.min(0.72, homeProb));
 
   const homeImplied = homeMLOdds != null ? americanToImpliedProb(homeMLOdds) : null;
   const awayImplied = awayMLOdds != null ? americanToImpliedProb(awayMLOdds) : null;
 
-  // Edge vs market
-  let pickSide: "home" | "away" = "home";
-  let pickTeam = game.home.name;
-  let edge = 0;
-  let odds: number | null = homeMLOdds;
+  let pickSide: "home" | "away";
+  let pickTeam: string;
+  let odds: number | null;
+  let modelProb: number;
+  let impliedProb: number;
 
-  if (homeImplied != null && awayImplied != null) {
-    const homeEdge = homeProb - homeImplied;
-    const awayEdge = (1 - homeProb) - awayImplied;
-    if (awayEdge > homeEdge) {
-      pickSide = "away";
-      pickTeam = game.away.name;
-      edge = awayEdge;
-      odds = awayMLOdds;
+  if (homeMLOdds != null && awayMLOdds != null) {
+    const marketFavorsHome = homeMLOdds < awayMLOdds;
+    const modelFavorsHome = homeProb > 0.5;
+
+    if (marketFavorsHome === modelFavorsHome) {
+      pickSide = modelFavorsHome ? "home" : "away";
     } else {
-      edge = homeEdge;
+      // Model and market disagree — default to the market favorite.
+      pickSide = marketFavorsHome ? "home" : "away";
     }
+    pickTeam = pickSide === "home" ? game.home.name : game.away.name;
+    odds = pickSide === "home" ? homeMLOdds : awayMLOdds;
+    modelProb = pickSide === "home" ? homeProb : 1 - homeProb;
+    impliedProb = pickSide === "home" ? homeImplied! : awayImplied!;
   } else {
-    // No market price — fall back to model only
-    if (homeProb < 0.5) {
-      pickSide = "away";
-      pickTeam = game.away.name;
-      odds = awayMLOdds;
-    }
-    edge = Math.abs(homeProb - 0.5);
+    pickSide = homeProb >= 0.5 ? "home" : "away";
+    pickTeam = pickSide === "home" ? game.home.name : game.away.name;
+    odds = pickSide === "home" ? homeMLOdds : awayMLOdds;
+    modelProb = pickSide === "home" ? homeProb : 1 - homeProb;
+    impliedProb = 0.5;
   }
 
-  // Confidence scale: bigger edge + greater model certainty = higher number.
-  const certainty = Math.abs(homeProb - 0.5) * 2; // 0..1
-  const edgeBoost = Math.max(0, edge) * 150;
-  const confidence = Math.max(
-    25,
-    Math.min(96, Math.round(55 + certainty * 30 + edgeBoost))
-  );
+  const rawEdge = modelProb - impliedProb;
+  const cappedEdge = Math.max(-0.08, Math.min(0.08, rawEdge));
+
+  // Confidence starts at the market-implied probability — we respect the market.
+  let confidence = impliedProb * 100;
+
+  if (rawEdge > 0 && modelProb > impliedProb) {
+    confidence += Math.min(8, cappedEdge * 100);
+  }
+  if (rawEdge < 0) {
+    confidence += Math.max(-15, rawEdge * 100);
+  }
+
+  if (hPScore.usedFallback || aPScore.usedFallback) confidence -= 5;
+  if (hO.usedFallback || aO.usedFallback) confidence -= 5;
+
+  const parkAdj = pickSide === "home" ? (park.runs - 100) * 0.05 : (100 - park.runs) * 0.05;
+  confidence += parkAdj;
+
+  confidence = Math.max(25, Math.min(88, Math.round(confidence)));
 
   const factors: MLFactor[] = [
     {
       name: `${game.home.name} SP: ${hP.fullName}`,
-      value: `${safeNum(hStats?.season?.era, 0).toFixed(2)} ERA · ${safeNum(hStats?.season?.whip, 0).toFixed(2)} WHIP`,
-      weight: pickSide === "home" ? hP_ - 30 : -(hP_ - 30),
+      value: `${fmt(hStats?.season?.era)} ERA · ${fmt(hStats?.season?.whip)} WHIP · ${fmt(hStats?.season?.inningsPitched)} IP`,
+      weight: pickSide === "home" ? hPScore.score - 30 : -(hPScore.score - 30),
     },
     {
       name: `${game.away.name} SP: ${aP.fullName}`,
-      value: `${safeNum(aStats?.season?.era, 0).toFixed(2)} ERA · ${safeNum(aStats?.season?.whip, 0).toFixed(2)} WHIP`,
-      weight: pickSide === "away" ? aP_ - 30 : -(aP_ - 30),
+      value: `${fmt(aStats?.season?.era)} ERA · ${fmt(aStats?.season?.whip)} WHIP · ${fmt(aStats?.season?.inningsPitched)} IP`,
+      weight: pickSide === "away" ? aPScore.score - 30 : -(aPScore.score - 30),
     },
     {
       name: `${game.home.name} offense`,
-      value: `${safeNum(hTeam?.hitting?.ops, 0).toFixed(3)} OPS · ${((safeNum(hTeam?.hitting?.runs, 0) / Math.max(1, safeNum(hTeam?.hitting?.gamesPlayed, 1))) || 0).toFixed(2)} R/G`,
-      weight: pickSide === "home" ? hO - 15 : -(hO - 15),
+      value: hHittingValid
+        ? `${fmt(hTeam.hitting.ops, 3)} OPS · ${rpgFmt(hTeam.hitting)} R/G`
+        : "insufficient sample — league avg used",
+      weight: pickSide === "home" ? hO.score - 15 : -(hO.score - 15),
     },
     {
       name: `${game.away.name} offense`,
-      value: `${safeNum(aTeam?.hitting?.ops, 0).toFixed(3)} OPS · ${((safeNum(aTeam?.hitting?.runs, 0) / Math.max(1, safeNum(aTeam?.hitting?.gamesPlayed, 1))) || 0).toFixed(2)} R/G`,
-      weight: pickSide === "away" ? aO - 15 : -(aO - 15),
+      value: aHittingValid
+        ? `${fmt(aTeam.hitting.ops, 3)} OPS · ${rpgFmt(aTeam.hitting)} R/G`
+        : "insufficient sample — league avg used",
+      weight: pickSide === "away" ? aO.score - 15 : -(aO.score - 15),
     },
     {
-      name: `${game.home.name} bullpen`,
-      value: `${safeNum(hTeam?.pitching?.era, 0).toFixed(2)} team ERA`,
+      name: `${game.home.name} team pitching`,
+      value: `${fmt(hTeam?.pitching?.era)} ERA`,
       weight: pickSide === "home" ? hBP - 7 : -(hBP - 7),
     },
     {
-      name: `${game.away.name} bullpen`,
-      value: `${safeNum(aTeam?.pitching?.era, 0).toFixed(2)} team ERA`,
+      name: `${game.away.name} team pitching`,
+      value: `${fmt(aTeam?.pitching?.era)} ERA`,
       weight: pickSide === "away" ? aBP - 7 : -(aBP - 7),
     },
-    { name: "Home SP L5 form", value: `${hForm.toFixed(2)} ERA`, weight: pickSide === "home" ? hFormAdj : -hFormAdj },
-    { name: "Away SP L5 form", value: `${aForm.toFixed(2)} ERA`, weight: pickSide === "away" ? aFormAdj : -aFormAdj },
-    { name: "Home field", value: `+${HFA.toFixed(1)} strength`, weight: pickSide === "home" ? HFA : -HFA },
-    { name: `Park: ${park.name}`, value: `Run factor ${park.runs}`, weight: 0 },
+    { name: `${game.home.name} SP last 5`, value: `${hForm.toFixed(2)} ERA`, weight: pickSide === "home" ? hFormAdj : -hFormAdj },
+    { name: `${game.away.name} SP last 5`, value: `${aForm.toFixed(2)} ERA`, weight: pickSide === "away" ? aFormAdj : -aFormAdj },
+    { name: "Home field", value: `+${HFA.toFixed(1)}`, weight: pickSide === "home" ? HFA : -HFA },
+    { name: `Park: ${park.name}`, value: `Run factor ${park.runs}`, weight: parkAdj },
     {
-      name: "Market edge",
-      value: `${(edge * 100).toFixed(1)}% vs ${odds ? americanFmt(odds) : "—"}`,
-      weight: edge * 100,
+      name: "Model vs market",
+      value: `model ${(modelProb * 100).toFixed(0)}% · implied ${(impliedProb * 100).toFixed(0)}% · odds ${odds != null ? americanFmt(odds) : "—"}`,
+      weight: cappedEdge * 100,
     },
   ];
 
@@ -211,11 +265,20 @@ export async function analyzeMoneyline(
     pickSide,
     pickTeam,
     confidence,
-    edge,
+    edge: cappedEdge,
+    modelProb,
+    impliedProb,
     factors,
     odds,
-    book: null, // filled in caller
+    book: null,
   };
+}
+
+// Odds-range filter: -250 to +180 (user preference).
+export function isAcceptableMLOdds(odds: number | null): boolean {
+  if (odds == null) return false;
+  if (odds < 0) return odds >= -250;
+  return odds <= 180;
 }
 
 function recentERA(log: any[]): number {
@@ -225,9 +288,22 @@ function recentERA(log: any[]): number {
     er += g.er;
     ip += g.ip;
   }
-  return ip ? (er * 9) / ip : 4.2;
+  return ip ? (er * 9) / ip : LG_ERA;
 }
 
 function americanFmt(o: number): string {
   return o > 0 ? `+${o}` : `${o}`;
+}
+
+function fmt(v: any, dp = 2): string {
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  if (!isFinite(n)) return "—";
+  return n.toFixed(dp);
+}
+
+function rpgFmt(hitting: any): string {
+  const r = safeNum(hitting?.runs, 0);
+  const g = safeNum(hitting?.gamesPlayed, 0);
+  if (!g) return "—";
+  return (r / g).toFixed(2);
 }
