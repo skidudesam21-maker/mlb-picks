@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&family=Inter:wght@400;500;600&display=swap");
+
+:root {
+  --font-display: "Bebas Neue";
+  --font-body: "Inter";
+  --font-mono: "DM Mono";
+  --font-serif: "Fraunces";
+}
+
+html,
+body {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(212, 167, 61, 0.07), transparent 60%),
+    radial-gradient(800px 500px at -10% 100%, rgba(34, 197, 94, 0.05), transparent 60%),
+    #07090b;
+  color: #e7e9ea;
+  min-height: 100vh;
+  font-family: var(--font-body);
+  letter-spacing: -0.005em;
+}
+
+/* Noise grain overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.7 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+}
+.font-serif {
+  font-family: var(--font-serif);
+}
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.stitched {
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 40%),
+    linear-gradient(#0b0e12, #0b0e12);
+  border: 1px solid #1a212a;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.grade-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 2.1rem;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  padding: 0.6rem 0.9rem 0.5rem;
+  background: linear-gradient(180deg, #111821, #0a0e13);
+  border: 1px solid #2a333f;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 20px -10px rgba(0, 0, 0, 0.6);
+}
+
+.grade-a {
+  color: #e8c26a;
+  border-color: rgba(212, 167, 61, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 30px -8px rgba(212, 167, 61, 0.35);
+}
+.grade-b {
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+.grade-c {
+  color: #fde68a;
+  border-color: rgba(253, 230, 138, 0.25);
+}
+.grade-d,
+.grade-f {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.hero-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(212, 167, 61, 0.6), transparent);
+}
+
+/* Meter */
+.meter {
+  position: relative;
+  height: 6px;
+  background: #11161c;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid #1a212a;
+}
+.meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #22c55e, #e8c26a);
+}
+
+/* Nav */
+.nav-link {
+  position: relative;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  letter-spacing: 0.14em;
+  color: #9aa3ad;
+  transition: color 160ms ease;
+}
+.nav-link:hover {
+  color: #e8c26a;
+}
+.nav-link[data-active="true"] {
+  color: #e8c26a;
+}
+.nav-link[data-active="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -8px;
+  height: 2px;
+  background: #e8c26a;
+}
+
+/* Vertical divider decoration */
+.vrule {
+  background: linear-gradient(180deg, transparent, #1a212a, transparent);
+  width: 1px;
+}
