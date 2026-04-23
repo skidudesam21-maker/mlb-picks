@@ -271,10 +271,10 @@ function buildKPick(
   if (!p?.season) return null;
 
   const ip = safeNum(p.season.inningsPitched, 0);
-  if (ip < 30) return null; // need a real sample
+  if (ip < 20) return null; // need a real sample
 
   const k9 = safeNum(p.season.strikeoutsPer9Inn, 8);
-  if (k9 < 6) return null; // don't pick low-K guys
+  if (k9 < 6.5) return null; // don't pick low-K guys
   const so = safeNum(p.season.strikeOuts, 0);
   const bf = safeNum(p.season.battersFaced, 1);
   const kpct = so / Math.max(1, bf);

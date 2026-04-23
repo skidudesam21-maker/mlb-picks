@@ -55,18 +55,17 @@ export async function generateAllPicks(): Promise<{
   const season = currentSeason();
 
   const schedule = await getScheduleForDate(date);
-  const now = Date.now();
   const playable = schedule.filter((g: any) => {
     if (!g.home?.probablePitcher || !g.away?.probablePitcher) return false;
-    if (g.status === "Final" || g.status === "Live" || g.status === "In Progress") return false;
+    // Only skip games that definitely won't happen or are already done.
     if (g.detailedState === "Postponed" || g.detailedState === "Suspended" || g.detailedState === "Cancelled") return false;
-    // Exclude any game whose first pitch has already happened (or is within 5 minutes).
-    if (g.gameDate) {
-      const gameTs = new Date(g.gameDate).getTime();
-      if (gameTs - now < 5 * 60 * 1000) return false;
-    }
+    // Note: we DO generate picks for games already in progress or finished.
+    // The generate cron might run late in the day, or we might regenerate after a partial run.
+    // Filtering by start time caused the main morning run to skip every game after first pitch.
     return true;
   });
+
+  console.log(`[generate] date=${date} schedule=${schedule.length} playable=${playable.length}`);
 
   // Pull odds
   const [gameOdds, firstInningOdds] = await Promise.all([
@@ -88,11 +87,15 @@ export async function generateAllPicks(): Promise<{
       console.error("NRFI analysis failed for", g.gamePk, e);
     }
   }
+  console.log(`[generate] NRFI evaluated=${nrfiResults.length}`);
   nrfiResults.sort((x, y) => y.analysis.confidence - x.analysis.confidence);
   const topNRFI = nrfiResults.slice(0, 3);
 
   // ----- Moneyline -----
   const mlResults = [];
+  let mlConsidered = 0;
+  let mlSkippedMissingStats = 0;
+  let mlSkippedOddsRange = 0;
   for (const g of playable) {
     try {
       const ev = findOddsEvent(gameOdds, g);
@@ -101,14 +104,22 @@ export async function generateAllPicks(): Promise<{
       const book = ev ? pickBestBook(ev.bookmakers ?? [])?.key ?? null : null;
       const a = await analyzeMoneyline(g, season, homeML, awayML);
       if (!a) continue;
-      if (a.skipReason) continue; // e.g. missing team stats
-      // Enforce odds range -250 to +180
-      if (!isAcceptableMLOdds(a.odds)) continue;
+      mlConsidered++;
+      if (a.skipReason) {
+        mlSkippedMissingStats++;
+        continue;
+      }
+      // If odds exist, enforce -250 to +180 range. If odds are null, allow the pick.
+      if (a.odds != null && !isAcceptableMLOdds(a.odds)) {
+        mlSkippedOddsRange++;
+        continue;
+      }
       mlResults.push({ analysis: { ...a, book }, odds: a.odds });
     } catch (e) {
       console.error("ML analysis failed for", g.gamePk, e);
     }
   }
+  console.log(`[generate] ML considered=${mlConsidered} kept=${mlResults.length} skippedStats=${mlSkippedMissingStats} skippedOddsRange=${mlSkippedOddsRange}`);
   mlResults.sort((x, y) => y.analysis.confidence - x.analysis.confidence);
   const topML = mlResults.slice(0, 3);
 
@@ -123,6 +134,7 @@ export async function generateAllPicks(): Promise<{
       return [];
     }),
   ]);
+  console.log(`[generate] hitCandidates=${hitPicks.length} kCandidates=${kPicks.length}`);
 
   // Attach odds for top candidates only (save API calls).
   const topHitCandidates = hitPicks.slice(0, 8);

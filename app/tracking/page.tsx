@@ -1,5 +1,6 @@
 import StatTiles from "@/components/StatTiles";
 import TabStrip from "@/components/TabStrip";
+import BackfillButton from "@/components/BackfillButton";
 import { getHistoryByRank, getLatestPicks, PickRow } from "@/lib/db";
 import { formatPickDateShort } from "@/lib/pageHelpers";
 import Link from "next/link";
@@ -83,11 +84,12 @@ export default async function TrackingPage({
       <TabStrip />
 
       {/* Context header */}
-      <div className="card p-5">
+      <div className="card p-5 space-y-3">
         <div className="section-label">Tracking Ledger</div>
         <p className="text-paper-300 text-sm">
-          Every pick auto-graded against final box scores from the MLB API. Unit size: <span className="text-paper-100 font-mono">${UNIT_USD}</span>.
+          Every pick auto-graded against final box scores. Unit size: <span className="text-paper-100 font-mono">${UNIT_USD}</span>. Backtest picks use synthetic -110 odds.
         </p>
+        <BackfillButton />
       </div>
 
       {/* Category sub-tabs */}
