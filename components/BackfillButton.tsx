@@ -4,7 +4,7 @@ import { useState } from "react";
 export default function BackfillButton() {
   const [open, setOpen] = useState(false);
   const [secret, setSecret] = useState("");
-  const [days, setDays] = useState(14);
+  const [days, setDays] = useState(7);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
@@ -20,9 +20,8 @@ export default function BackfillButton() {
         setResult(`Error: ${data.error ?? res.status}`);
       } else {
         setResult(
-          `Done. ${data.days} days processed · ${data.picksInserted} picks inserted · ${data.picksGraded} graded.`
+          `Done. ${data.days} days processed · ${data.picksInserted} picks inserted · ${data.picksGraded} graded. Range: ${data.range ?? ""}`
         );
-        // Refresh page after 2s
         setTimeout(() => location.reload(), 2500);
       }
     } catch (e: any) {
@@ -49,7 +48,7 @@ export default function BackfillButton() {
         Run historical backtest
       </div>
       <p className="text-xs text-paper-300">
-        Runs the model on past dates (uses honest date-bounded pitcher logs; current-season team stats have mild leakage). Synthetic -110 odds are used since historical real odds aren't available on the free tier. Takes 3-10 minutes depending on days.
+        Runs the model on past dates with honest pitcher game-log snapshots. Synthetic -110 odds since free-tier APIs don't give historical odds. Max 7 days per run to fit in Vercel's 5-min function limit — run multiple times to cover more.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -64,11 +63,10 @@ export default function BackfillButton() {
           onChange={(e) => setDays(parseInt(e.target.value))}
           className="font-mono text-sm bg-bg-800 border border-bg-700 rounded px-3 py-2 text-paper-100"
         >
+          <option value="1">1 day</option>
           <option value="3">3 days</option>
+          <option value="5">5 days</option>
           <option value="7">7 days</option>
-          <option value="14">14 days</option>
-          <option value="21">21 days</option>
-          <option value="30">30 days</option>
         </select>
         <button
           onClick={run}

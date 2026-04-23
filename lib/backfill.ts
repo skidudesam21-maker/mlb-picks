@@ -41,13 +41,17 @@ function pastDates(daysBack: number): string[] {
   return out;
 }
 
-export async function runBackfill(daysBack: number = 14): Promise<{
-  days: number;
-  picksInserted: number;
-  picksGraded: number;
-}> {
+export async function runBackfillRange(
+  fromDate: string,
+  toDate: string
+): Promise<{ days: number; picksInserted: number; picksGraded: number; range: string }> {
   await ensureSchema();
-  const dates = pastDates(daysBack);
+  const dates: string[] = [];
+  const start = new Date(fromDate + "T12:00:00Z");
+  const end = new Date(toDate + "T12:00:00Z");
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10));
+  }
   const season = new Date().getFullYear();
   let totalInserted = 0;
   let totalGraded = 0;
@@ -62,7 +66,29 @@ export async function runBackfill(daysBack: number = 14): Promise<{
       console.error(`[backfill ${date}] failed:`, e?.message ?? e);
     }
   }
-  return { days: dates.length, picksInserted: totalInserted, picksGraded: totalGraded };
+  return {
+    days: dates.length,
+    picksInserted: totalInserted,
+    picksGraded: totalGraded,
+    range: `${fromDate} to ${toDate}`,
+  };
+}
+
+export async function runBackfill(daysBack: number = 14): Promise<{
+  days: number;
+  picksInserted: number;
+  picksGraded: number;
+}> {
+  const today = new Date();
+  const toDate = new Date(today);
+  toDate.setUTCDate(toDate.getUTCDate() - 1);
+  const fromDate = new Date(today);
+  fromDate.setUTCDate(fromDate.getUTCDate() - daysBack);
+  const r = await runBackfillRange(
+    fromDate.toISOString().slice(0, 10),
+    toDate.toISOString().slice(0, 10)
+  );
+  return { days: r.days, picksInserted: r.picksInserted, picksGraded: r.picksGraded };
 }
 
 async function backfillOneDay(

@@ -1,4 +1,4 @@
-  # Diamond Edge — MLB Analytical Picks Site
+# Diamond Edge — MLB Analytical Picks Site
 
 A multi-page MLB betting-picks site. Daily top-3 picks for:
 
