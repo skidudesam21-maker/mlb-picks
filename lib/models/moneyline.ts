@@ -100,6 +100,55 @@ function bullpenScore(t: any): number {
   return Math.max(2, Math.min(13, s));
 }
 
+// Weather impact on run scoring. Returns a -3..+3 adjustment for the FAVORED OFFENSE.
+// Hot/humid + wind-out = more runs. Cold + wind-in = fewer runs.
+// For moneyline purposes: this shifts the strength of the team with the better OFFENSE
+// (favorable conditions help whoever was going to score more anyway).
+function weatherRunBoost(weather: any): number {
+  if (!weather) return 0;
+  let adj = 0;
+  const tempStr = weather.temp ?? "";
+  const temp = parseInt(tempStr);
+  if (isFinite(temp)) {
+    if (temp >= 85) adj += 2;
+    else if (temp >= 75) adj += 1;
+    else if (temp <= 45) adj -= 2;
+    else if (temp <= 55) adj -= 1;
+  }
+  const wind = weather.wind ?? "";
+  if (typeof wind === "string") {
+    const mphMatch = wind.match(/(\d+)\s*mph/i);
+    const mph = mphMatch ? parseInt(mphMatch[1]) : 0;
+    if (/out/i.test(wind) && mph >= 10) adj += Math.min(3, Math.floor(mph / 5));
+    if (/in/i.test(wind) && mph >= 10) adj -= Math.min(3, Math.floor(mph / 5));
+  }
+  return Math.max(-3, Math.min(3, adj));
+}
+
+// Lineup handedness vs opposing starter.
+// Returns an adjustment to the offense score of the team whose lineup is facing `pitcher`.
+// Uses pitcher's vs-L or vs-R splits: if pitcher is much worse vs RHH than vs LHH,
+// and the opposing lineup is mostly righty (which most MLB lineups are), that offense gets a boost.
+//
+// We don't know exact lineup handedness per-game without real lineup data, so we use
+// a league-wide prior: lineups are ~60% RHH, 40% LHH in typical MLB.
+// When a pitcher's split OPS against their weaker side is >.750, that signals exploitable platoon.
+function handednessAdjustment(pitcher: any): number {
+  if (!pitcher) return 0;
+  const vsL = pitcher.vsLeft?.ops;
+  const vsR = pitcher.vsRight?.ops;
+  const vsLNum = typeof vsL === "string" ? parseFloat(vsL) : vsL;
+  const vsRNum = typeof vsR === "string" ? parseFloat(vsR) : vsR;
+  if (!isFinite(vsLNum) || !isFinite(vsRNum)) return 0;
+  // League average split is ~.710 OPS either side. Weight by how much worse the pitcher is
+  // against the expected-majority (RHH) side of the lineup.
+  const expectedOpposingOPS = vsRNum * 0.6 + vsLNum * 0.4;
+  // If the pitcher has an expected opposing OPS > .780, the lineup exploits them.
+  // Returns -3..+3 for the OFFENSE (positive = offense gets a boost because pitcher is vulnerable).
+  const delta = (expectedOpposingOPS - 0.72) * 20;
+  return Math.max(-3, Math.min(3, delta));
+}
+
 export async function analyzeMoneyline(
   game: Game,
   season: number,
@@ -138,10 +187,23 @@ export async function analyzeMoneyline(
   const hFormAdj = Math.max(-4, Math.min(4, (LG_ERA - hForm) * 1.5));
   const aFormAdj = Math.max(-4, Math.min(4, (LG_ERA - aForm) * 1.5));
 
+  // Handedness matchup: home offense vs away starter, and vice versa.
+  // Positive value = the starter is vulnerable to the majority-righty lineup.
+  const homeHandEdge = handednessAdjustment(aStats); // home hitters vs away pitcher
+  const awayHandEdge = handednessAdjustment(hStats); // away hitters vs home pitcher
+
+  // Weather: hot + wind-out helps whoever has the stronger offense more.
+  // We add it to the side with the higher offense score.
+  const weatherBoost = weatherRunBoost(game.weather);
+  const homeWeatherAdj = hO.score >= aO.score ? weatherBoost : 0;
+  const awayWeatherAdj = aO.score > hO.score ? weatherBoost : 0;
+
   const HFA = 4.5;
 
-  const homeStrength = hPScore.score + hO.score + hBP + hFormAdj + HFA;
-  const awayStrength = aPScore.score + aO.score + aBP + aFormAdj;
+  const homeStrength =
+    hPScore.score + hO.score + hBP + hFormAdj + HFA + homeHandEdge + homeWeatherAdj;
+  const awayStrength =
+    aPScore.score + aO.score + aBP + aFormAdj + awayHandEdge + awayWeatherAdj;
 
   const gap = homeStrength - awayStrength;
   let homeProb = 1 / (1 + Math.exp(-gap / 18));
@@ -209,6 +271,16 @@ export async function analyzeMoneyline(
     },
     { name: `${game.home.name} SP last 5`, value: `${hForm.toFixed(2)} ERA`, weight: pickSide === "home" ? hFormAdj : -hFormAdj },
     { name: `${game.away.name} SP last 5`, value: `${aForm.toFixed(2)} ERA`, weight: pickSide === "away" ? aFormAdj : -aFormAdj },
+    {
+      name: "Handedness matchup",
+      value: handednessDescription(pickSide === "home" ? aStats : hStats),
+      weight: pickSide === "home" ? homeHandEdge : awayHandEdge,
+    },
+    {
+      name: "Weather",
+      value: weatherDescription(game.weather),
+      weight: pickSide === "home" ? homeWeatherAdj : awayWeatherAdj,
+    },
     { name: "Home field", value: `+${HFA.toFixed(1)}`, weight: pickSide === "home" ? HFA : -HFA },
     { name: `Park: ${park.name}`, value: `Run factor ${park.runs}`, weight: parkAdj },
     {
@@ -265,4 +337,25 @@ function rpgFmt(hitting: any): string {
   const g = safeNum(hitting?.gamesPlayed, 0);
   if (!g) return "—";
   return (r / g).toFixed(2);
+}
+
+function handednessDescription(pitcher: any): string {
+  if (!pitcher) return "—";
+  const vsL = typeof pitcher.vsLeft?.ops === "string" ? parseFloat(pitcher.vsLeft.ops) : pitcher.vsLeft?.ops;
+  const vsR = typeof pitcher.vsRight?.ops === "string" ? parseFloat(pitcher.vsRight.ops) : pitcher.vsRight?.ops;
+  if (!isFinite(vsL) && !isFinite(vsR)) return "no split data";
+  const throws = pitcher.throws ?? "?";
+  const parts: string[] = [`${throws}HP`];
+  if (isFinite(vsL)) parts.push(`vs L ${fmt(vsL, 3)}`);
+  if (isFinite(vsR)) parts.push(`vs R ${fmt(vsR, 3)}`);
+  return parts.join(" · ");
+}
+
+function weatherDescription(weather: any): string {
+  if (!weather) return "indoors / unknown";
+  const parts: string[] = [];
+  if (weather.temp) parts.push(`${weather.temp}°F`);
+  if (weather.condition) parts.push(weather.condition);
+  if (weather.wind) parts.push(`wind ${weather.wind}`);
+  return parts.length ? parts.join(" · ") : "no data";
 }
