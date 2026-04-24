@@ -2,23 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateMoneylinePicks } from "@/lib/pipeline";
 import { recomputeNRFI } from "@/lib/nrfiStats";
 import { refreshTodayMatchups } from "@/lib/matchups";
+import { todayET, currentSeasonET } from "@/lib/dateUtil";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-// Daily orchestration: runs moneyline picks, recomputes NRFI stats, refreshes today's matchups.
-// All three are attempted; a failure in one does not block the others.
-// Hobby plan = 300s max, so each task is time-budgeted.
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
   if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const results: any = {};
+  const results: any = { date: todayET() };
 
-  // Run in order of fastest to slowest so a timeout doesn't kill the essential stuff.
-  // 1) Moneyline picks (~15s — a few API calls + model math + 3 Groq writeups)
+  // 1) Moneyline picks (fast — runs first so essentials are saved even if later steps time out)
   try {
     results.moneyline = await generateMoneylinePicks();
   } catch (e: any) {
@@ -26,9 +23,9 @@ export async function GET(req: NextRequest) {
     results.moneyline = { error: e.message };
   }
 
-  // 2) Matchups refresh (~60s — depends on how many games today; one career-stats call per batter pairing)
+  // 2) Matchups refresh (medium — pulls career BvP for every pairing)
   try {
-    const d = new Date().toISOString().slice(0, 10);
+    const d = todayET();
     results.matchups = await refreshTodayMatchups(d);
     results.matchups.date = d;
   } catch (e: any) {
@@ -36,9 +33,9 @@ export async function GET(req: NextRequest) {
     results.matchups = { error: e.message };
   }
 
-  // 3) NRFI full-season recompute (~120-240s — hundreds of game linescores)
+  // 3) NRFI full-season recompute (slow — seasonal aggregation)
   try {
-    const season = new Date().getFullYear();
+    const season = currentSeasonET();
     results.nrfi = await recomputeNRFI(season);
     results.nrfi.season = season;
   } catch (e: any) {

@@ -122,22 +122,9 @@ export async function analyzeMoneyline(
 
   const hHittingValid = hTeam?.hitting && validStat(hTeam.hitting.ops);
   const aHittingValid = aTeam?.hitting && validStat(aTeam.hitting.ops);
-  if (!hHittingValid && !aHittingValid) {
-    return {
-      gamePk: game.gamePk,
-      matchup: `${game.away.name} @ ${game.home.name}`,
-      pickSide: "home",
-      pickTeam: game.home.name,
-      confidence: 0,
-      edge: 0,
-      modelProb: 0.5,
-      impliedProb: 0.5,
-      factors: [],
-      odds: null,
-      book: null,
-      skipReason: "missing team stats",
-    };
-  }
+  // Note: we no longer skip when team stats are missing. teamOffenseScore() falls back
+  // to league-average priors with a confidence penalty. The early bug (Apr 2026) caused
+  // every pick to skip when the hydrate stats endpoint returned no data.
 
   const park = getParkFactor(game.venue?.id);
   const hPScore = pitcherFullGameScore(hStats);

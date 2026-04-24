@@ -21,14 +21,14 @@ import {
   updatePickResult,
   setTodayPitchers,
 } from "./db";
+import { todayET, currentSeasonET } from "./dateUtil";
 
 function todayISO(): string {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
+  return todayET();
 }
 
 function currentSeason(): number {
-  return new Date().getFullYear();
+  return currentSeasonET();
 }
 
 function findOddsEvent(oddsEvents: any[], game: any) {

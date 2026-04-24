@@ -104,18 +104,24 @@ export async function getPitcherGameLog(pitcherId: number, season: number) {
   }));
 }
 
-// Team stats (offensive, bullpen).
+// Team stats — uses the dedicated stats endpoint which is more reliable than the
+// hydrate-on-teams approach.
 export async function getTeamStats(teamId: number, season: number) {
-  const url = `${BASE}/teams/${teamId}?hydrate=stats(splits=[season],group=[hitting,pitching],season=${season})`;
-  const data = await fetchJson(url);
-  const team = data.teams?.[0];
-  if (!team) return null;
-  const out: any = { id: teamId, name: team.name };
-  for (const s of team.stats ?? []) {
-    const group = s.group?.displayName;
-    const stat = s.splits?.[0]?.stat;
-    if (group === "hitting") out.hitting = stat;
-    if (group === "pitching") out.pitching = stat;
+  const out: any = { id: teamId, name: "" };
+  try {
+    const hittingUrl = `${BASE}/teams/stats?sportId=1&season=${season}&group=hitting&stats=season&teamId=${teamId}`;
+    const pitchingUrl = `${BASE}/teams/stats?sportId=1&season=${season}&group=pitching&stats=season&teamId=${teamId}`;
+    const [h, p] = await Promise.all([
+      fetchJson(hittingUrl).catch(() => null),
+      fetchJson(pitchingUrl).catch(() => null),
+    ]);
+    const hSplit = h?.stats?.[0]?.splits?.find((s: any) => s.team?.id === teamId) ?? h?.stats?.[0]?.splits?.[0];
+    const pSplit = p?.stats?.[0]?.splits?.find((s: any) => s.team?.id === teamId) ?? p?.stats?.[0]?.splits?.[0];
+    if (hSplit?.stat) out.hitting = hSplit.stat;
+    if (pSplit?.stat) out.pitching = pSplit.stat;
+    if (hSplit?.team?.name) out.name = hSplit.team.name;
+  } catch (e) {
+    console.error(`[getTeamStats] failed for team ${teamId}:`, e);
   }
   return out;
 }
