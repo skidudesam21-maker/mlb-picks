@@ -401,3 +401,65 @@ export async function getMatchupsForLatest(): Promise<MatchupRow[]> {
   `;
   return rows as MatchupRow[];
 }
+
+// Returns today's games — one row per game with both teams and both pitchers.
+// Built by deduplicating rows in today_matchups (which stores batter-vs-pitcher pairings).
+export type TodayGame = {
+  game_pk: number;
+  date: string;
+  home_team: string;
+  home_pitcher: string;
+  away_team: string;
+  away_pitcher: string;
+};
+
+export async function getTodayGames(): Promise<TodayGame[]> {
+  await ensureSchema();
+  const { rows } = await sql`
+    SELECT DISTINCT date, game_pk, pitcher_name, pitcher_team, batter_team
+    FROM today_matchups
+    WHERE date = (SELECT MAX(date) FROM today_matchups)
+  `;
+  // Rows contain: one pitcher + his team + the opposing (batter) team.
+  // To build a single per-game row with both sides, group by game_pk and pair up the two pitchers.
+  const byGame: Record<string, any> = {};
+  for (const r of rows as any[]) {
+    const key = String(r.game_pk);
+    if (!byGame[key]) {
+      byGame[key] = { game_pk: r.game_pk, date: r.date, pitchers: [] };
+    }
+    const exists = byGame[key].pitchers.find((p: any) => p.name === r.pitcher_name);
+    if (!exists) {
+      byGame[key].pitchers.push({
+        name: r.pitcher_name,
+        team: r.pitcher_team, // this pitcher's team
+        opposing: r.batter_team, // the team he faces (i.e., the OTHER team in the game)
+      });
+    }
+  }
+
+  const out: TodayGame[] = [];
+  for (const g of Object.values(byGame) as any[]) {
+    if (g.pitchers.length < 1) continue;
+    // Figure out which pitcher is home, which is away.
+    // Without an explicit flag, use the convention: if only one pitcher, skip.
+    // If two, the "home_team" is the team whose pitcher's OWN team equals the other pitcher's OPPOSING team.
+    const p1 = g.pitchers[0];
+    const p2 = g.pitchers[1] ?? null;
+    if (!p2) continue;
+    // p1.team is p1's team. p2.opposing is what p2 faces (should equal p1.team).
+    // We can't cleanly distinguish home/away from this data alone. Use alphabetical tie-break
+    // so display is stable; the UI just labels "@" between them.
+    out.push({
+      game_pk: g.game_pk,
+      date: g.date,
+      away_team: p1.team,
+      away_pitcher: p1.name,
+      home_team: p2.team,
+      home_pitcher: p2.name,
+    });
+  }
+  // Stable sort by home team name
+  out.sort((a, b) => a.home_team.localeCompare(b.home_team));
+  return out;
+}

@@ -6,7 +6,6 @@ const TABS = [
   { href: "/", label: "NRFI" },
   { href: "/moneyline", label: "Moneyline" },
   { href: "/matchups", label: "Matchups" },
-  { href: "/tracking", label: "Tracking" },
   { href: "/system", label: "System" },
 ];
 

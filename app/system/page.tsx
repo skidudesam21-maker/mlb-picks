@@ -1,5 +1,6 @@
 import StatTiles from "@/components/StatTiles";
 import TabStrip from "@/components/TabStrip";
+import TodaySlate from "@/components/TodaySlate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
