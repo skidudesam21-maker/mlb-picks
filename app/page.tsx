@@ -1,7 +1,6 @@
 import StatTiles from "@/components/StatTiles";
 import TabStrip from "@/components/TabStrip";
 import NRFIDashboard from "@/components/NRFIDashboard";
-import TodaySlate from "@/components/TodaySlate";
 import { getNRFITeams, getNRFIPitchers } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -52,12 +51,7 @@ export default async function Home() {
       />
       <TabStrip />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
-        <div>
-          <NRFIDashboard teams={teams} pitchers={pitchers} />
-        </div>
-        <TodaySlate />
-      </div>
+      <NRFIDashboard teams={teams} pitchers={pitchers} />
     </div>
   );
 }
