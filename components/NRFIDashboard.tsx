@@ -150,11 +150,16 @@ function PitchersTable({ pitchers }: { pitchers: (NRFIPitcherRow & { playing_tod
     if (onlyToday) {
       out = out.filter((p) => p.playing_today);
     }
-    const enriched = out.map((p) => ({
-      ...p,
-      nrfi_pct: p.games_started === 0 ? 0 : (p.nrfi_wins / p.games_started) * 100,
-      fi_era: p.first_inn_ip > 0 ? (p.first_inn_er * 9) / p.first_inn_ip : 0,
-    }));
+    const enriched = out.map((p) => {
+      const ip = typeof p.first_inn_ip === "string" ? parseFloat(p.first_inn_ip) : p.first_inn_ip;
+      const ipNum = isFinite(ip) ? ip : 0;
+      return {
+        ...p,
+        first_inn_ip: ipNum,
+        nrfi_pct: p.games_started === 0 ? 0 : (p.nrfi_wins / p.games_started) * 100,
+        fi_era: ipNum > 0 ? (p.first_inn_er * 9) / ipNum : 0,
+      };
+    });
     enriched.sort((a, b) => {
       let cmp = 0;
       if (sortKey === "nrfi_pct") cmp = a.nrfi_pct - b.nrfi_pct;

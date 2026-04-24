@@ -14,8 +14,8 @@ export default function MatchupsTable({ rows }: { rows: MatchupRow[] }) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let out = rows.filter((r) => {
-      if (minAB > 0 && (r.ab ?? 0) < minAB) return false;
-      if (minAVG > 0 && (r.avg ?? 0) < minAVG) return false;
+      if (minAB > 0 && toNum(r.ab) < minAB) return false;
+      if (minAVG > 0 && toNum(r.avg) < minAVG) return false;
       if (q) {
         const text = `${r.batter_name} ${r.pitcher_name} ${r.batter_team ?? ""} ${r.pitcher_team ?? ""}`.toLowerCase();
         if (!text.includes(q)) return false;
@@ -26,22 +26,22 @@ export default function MatchupsTable({ rows }: { rows: MatchupRow[] }) {
       let cmp = 0;
       switch (sortKey) {
         case "pa":
-          cmp = (a.pa ?? 0) - (b.pa ?? 0);
+          cmp = toNum(a.pa) - toNum(b.pa);
           break;
         case "ab":
-          cmp = (a.ab ?? 0) - (b.ab ?? 0);
+          cmp = toNum(a.ab) - toNum(b.ab);
           break;
         case "h":
-          cmp = (a.h ?? 0) - (b.h ?? 0);
+          cmp = toNum(a.h) - toNum(b.h);
           break;
         case "hr":
-          cmp = (a.hr ?? 0) - (b.hr ?? 0);
+          cmp = toNum(a.hr) - toNum(b.hr);
           break;
         case "avg":
-          cmp = (a.avg ?? 0) - (b.avg ?? 0);
+          cmp = toNum(a.avg) - toNum(b.avg);
           break;
         case "ops":
-          cmp = (a.ops ?? 0) - (b.ops ?? 0);
+          cmp = toNum(a.ops) - toNum(b.ops);
           break;
         case "batter":
           cmp = a.batter_name.localeCompare(b.batter_name);
@@ -183,7 +183,15 @@ export default function MatchupsTable({ rows }: { rows: MatchupRow[] }) {
   );
 }
 
-function baFmt(v: number | null | undefined): string {
-  if (v == null || !isFinite(v) || v === 0) return "—";
-  return v.toFixed(3).replace(/^0\./, ".");
+function baFmt(v: number | string | null | undefined): string {
+  if (v == null) return "—";
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  if (!isFinite(n) || n === 0) return "—";
+  return n.toFixed(3).replace(/^0\./, ".");
+}
+
+function toNum(v: any): number {
+  if (v == null) return 0;
+  const n = typeof v === "string" ? parseFloat(v) : v;
+  return isFinite(n) ? n : 0;
 }

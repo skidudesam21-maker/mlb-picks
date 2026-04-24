@@ -96,6 +96,13 @@ export async function generateMoneylinePicks(): Promise<{
     }
   }
   console.log(`[moneyline] playable=${playable.length} considered=${considered} kept=${results.length}`);
+  if (results.length > 0) {
+    console.log(`[moneyline] top candidates:`, results.slice(0, 5).map((r) => ({
+      team: r.analysis.pickTeam,
+      conf: r.analysis.confidence,
+      odds: r.analysis.odds,
+    })));
+  }
 
   results.sort((x, y) => y.analysis.confidence - x.analysis.confidence);
   const top = results.slice(0, 3);
@@ -106,32 +113,43 @@ export async function generateMoneylinePicks(): Promise<{
   for (const r of top) {
     const a = r.analysis;
     const grade = confidenceToGrade(a.confidence);
-    const writeup = await generateWriteup(
-      "moneyline",
-      `${a.pickTeam} ML`,
-      a.factors,
-      a.confidence,
-      grade,
-      `Matchup: ${a.matchup}. Model win prob ${(a.modelProb * 100).toFixed(0)}% vs implied ${(a.impliedProb * 100).toFixed(0)}%.`
-    );
-    await insertPick({
-      date,
-      category: "moneyline",
-      rank,
-      game_pk: a.gamePk,
-      pick_label: `${a.pickTeam} ML`,
-      side: a.pickSide,
-      line: null,
-      odds: a.odds,
-      book: (a as any).book ?? null,
-      grade,
-      confidence: a.confidence,
-      writeup,
-      factors: a.factors,
-      result: null,
-      units: null,
-      final_value: null,
-    });
+    let writeup = `${a.pickTeam} ML — grade ${grade}, confidence ${a.confidence}.`;
+    try {
+      const generated = await generateWriteup(
+        "moneyline",
+        `${a.pickTeam} ML`,
+        a.factors,
+        a.confidence,
+        grade,
+        `Matchup: ${a.matchup}. Model win prob ${(a.modelProb * 100).toFixed(0)}% vs implied ${(a.impliedProb * 100).toFixed(0)}%.`
+      );
+      if (generated && generated.length > 0) writeup = generated;
+    } catch (e) {
+      console.error("[moneyline] writeup failed for", a.pickTeam, e);
+    }
+    try {
+      await insertPick({
+        date,
+        category: "moneyline",
+        rank,
+        game_pk: a.gamePk,
+        pick_label: `${a.pickTeam} ML`,
+        side: a.pickSide,
+        line: null,
+        odds: a.odds,
+        book: (a as any).book ?? null,
+        grade,
+        confidence: a.confidence,
+        writeup,
+        factors: a.factors,
+        result: null,
+        units: null,
+        final_value: null,
+      });
+      console.log(`[moneyline] inserted rank=${rank} ${a.pickTeam}`);
+    } catch (e) {
+      console.error("[moneyline] insert failed for", a.pickTeam, e);
+    }
     rank++;
   }
 

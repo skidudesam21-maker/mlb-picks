@@ -17,6 +17,8 @@ export async function GET(req: NextRequest) {
 
   const results: any = {};
 
+  // Run in order of fastest to slowest so a timeout doesn't kill the essential stuff.
+  // 1) Moneyline picks (~15s — a few API calls + model math + 3 Groq writeups)
   try {
     results.moneyline = await generateMoneylinePicks();
   } catch (e: any) {
@@ -24,15 +26,7 @@ export async function GET(req: NextRequest) {
     results.moneyline = { error: e.message };
   }
 
-  try {
-    const season = new Date().getFullYear();
-    results.nrfi = await recomputeNRFI(season);
-    results.nrfi.season = season;
-  } catch (e: any) {
-    console.error("[cron] nrfi failed", e);
-    results.nrfi = { error: e.message };
-  }
-
+  // 2) Matchups refresh (~60s — depends on how many games today; one career-stats call per batter pairing)
   try {
     const d = new Date().toISOString().slice(0, 10);
     results.matchups = await refreshTodayMatchups(d);
@@ -40,6 +34,16 @@ export async function GET(req: NextRequest) {
   } catch (e: any) {
     console.error("[cron] matchups failed", e);
     results.matchups = { error: e.message };
+  }
+
+  // 3) NRFI full-season recompute (~120-240s — hundreds of game linescores)
+  try {
+    const season = new Date().getFullYear();
+    results.nrfi = await recomputeNRFI(season);
+    results.nrfi.season = season;
+  } catch (e: any) {
+    console.error("[cron] nrfi failed", e);
+    results.nrfi = { error: e.message };
   }
 
   return NextResponse.json({ ok: true, ...results });
