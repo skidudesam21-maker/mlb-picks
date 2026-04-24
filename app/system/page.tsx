@@ -22,7 +22,7 @@ export default function SystemPage() {
       <div className="card p-6">
         <div className="section-label">What Skogspicks tracks</div>
         <p className="text-paper-200 leading-relaxed">
-          Skogspicks has three tools: an <span className="text-red-400">NRFI dashboard</span> showing each team's and starting pitcher's 1st-inning scoring records for the current season, a daily <span className="text-red-400">moneyline picks</span> list (top 3, underdogs only up to +150), and a <span className="text-red-400">hitter-vs-pitcher matchup table</span> showing lifetime career stats for every batter in today's lineups against today's starters.
+          Skogspicks has three tools: an <span className="text-red-400">NRFI dashboard</span> showing each team's and starting pitcher's 1st-inning scoring records for the current season, a daily <span className="text-red-400">moneyline picks</span> list (top 3), and a <span className="text-red-400">hitter-vs-pitcher matchup table</span> showing lifetime career stats for every batter in today's lineups against today's starters.
         </p>
       </div>
 
@@ -45,9 +45,7 @@ export default function SystemPage() {
           Three picks daily. The model scores every game on a team-strength composite (starter quality, offense, bullpen, recent form, home field) and compares to market-implied probability when available.
         </p>
         <ul className="space-y-1.5 text-sm text-paper-200">
-          <li>· Only picks underdogs priced at <span className="text-red-400 font-mono">+150 or shorter</span> — no long-shot lottery tickets</li>
-          <li>· Favorites at any price are eligible</li>
-          <li>· If odds aren't available for a game, the pick still shows (the pick-making is the point, not the odds)</li>
+          <li>· Only picks teams the model projects favorably at a reasonable price</li>
           <li>· Click any card to expand the full factor-by-factor writeup</li>
           <li>· Letter grade reflects confidence: A (80+), B (65–79), C (50–64), D (&lt;50)</li>
         </ul>
@@ -70,7 +68,6 @@ export default function SystemPage() {
         <div className="section-label">Data & Refresh</div>
         <ul className="space-y-1.5 text-sm text-paper-200">
           <li>· <span className="text-red-400 font-mono">MLB Stats API</span> — schedule, pitchers, linescores, box scores, rosters, career stats</li>
-          <li>· <span className="text-red-400 font-mono">The Odds API</span> — moneyline odds, used only when available</li>
           <li>· <span className="text-red-400 font-mono">Llama 3.3 via Groq</span> — writes the pick analysis from model factors</li>
           <li>· Daily <span className="font-mono">generate</span> cron refreshes: moneyline picks + NRFI team/pitcher stats + today's matchups</li>
           <li>· Daily <span className="font-mono">grade</span> cron marks past picks as W/L/Push against final box scores</li>

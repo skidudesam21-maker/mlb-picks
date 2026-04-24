@@ -31,9 +31,9 @@ export default async function MoneylinePage() {
             accent: "red",
           },
           {
-            label: "Range",
-            value: "Dogs ≤ +150",
-            sub: "favs any price",
+            label: "System",
+            value: "Model",
+            sub: "confidence-ranked",
           },
         ]}
       />

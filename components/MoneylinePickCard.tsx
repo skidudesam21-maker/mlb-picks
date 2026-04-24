@@ -66,10 +66,6 @@ export default function MoneylinePickCard({ pick }: { pick: any }) {
               <span className="text-bg-500 font-mono text-[11px] tracking-[0.2em]">#{pick.rank}</span>
             )}
             <div className="flex-1" />
-            {pick.odds != null && (
-              <span className="chip chip-muted font-mono">Line: {fmtOdds(pick.odds)}</span>
-            )}
-            {pick.book && <span className="chip chip-muted">{pick.book}</span>}
           </div>
 
           <h3 className="font-sans text-lg md:text-xl font-semibold text-paper-100 leading-tight">

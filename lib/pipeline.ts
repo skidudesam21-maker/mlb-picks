@@ -121,7 +121,7 @@ export async function generateMoneylinePicks(): Promise<{
         a.factors,
         a.confidence,
         grade,
-        `Matchup: ${a.matchup}. Model win prob ${(a.modelProb * 100).toFixed(0)}% vs implied ${(a.impliedProb * 100).toFixed(0)}%.`
+        `Matchup: ${a.matchup}. Model projects ${(a.modelProb * 100).toFixed(0)}% win probability.`
       );
       if (generated && generated.length > 0) writeup = generated;
     } catch (e) {

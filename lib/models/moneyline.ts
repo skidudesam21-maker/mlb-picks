@@ -13,7 +13,6 @@
 
 import { getPitcherStats, getPitcherGameLog, getTeamStats } from "./../mlb";
 import { getParkFactor } from "./../parks";
-import { americanToImpliedProb } from "./../odds";
 
 type Game = any;
 
@@ -148,50 +147,19 @@ export async function analyzeMoneyline(
   let homeProb = 1 / (1 + Math.exp(-gap / 18));
   homeProb = Math.max(0.28, Math.min(0.72, homeProb));
 
-  const homeImplied = homeMLOdds != null ? americanToImpliedProb(homeMLOdds) : null;
-  const awayImplied = awayMLOdds != null ? americanToImpliedProb(awayMLOdds) : null;
+  // (Odds are not used for model decisions. The caller applies the +150 filter.)
 
-  let pickSide: "home" | "away";
-  let pickTeam: string;
-  let odds: number | null;
-  let modelProb: number;
-  let impliedProb: number;
+  // Pick side purely from the model — market odds do NOT influence this decision.
+  const pickSide: "home" | "away" = homeProb >= 0.5 ? "home" : "away";
+  const pickTeam = pickSide === "home" ? game.home.name : game.away.name;
+  const odds = pickSide === "home" ? homeMLOdds : awayMLOdds; // passed through for the caller's +150 filter only
+  const modelProb = pickSide === "home" ? homeProb : 1 - homeProb;
 
-  if (homeMLOdds != null && awayMLOdds != null) {
-    const marketFavorsHome = homeMLOdds < awayMLOdds;
-    const modelFavorsHome = homeProb > 0.5;
+  // Confidence is based solely on the model's certainty and data quality.
+  // 0.5 model prob → 50 confidence. 0.72 model prob → ~72 confidence.
+  let confidence = modelProb * 100;
 
-    if (marketFavorsHome === modelFavorsHome) {
-      pickSide = modelFavorsHome ? "home" : "away";
-    } else {
-      // Model and market disagree — default to the market favorite.
-      pickSide = marketFavorsHome ? "home" : "away";
-    }
-    pickTeam = pickSide === "home" ? game.home.name : game.away.name;
-    odds = pickSide === "home" ? homeMLOdds : awayMLOdds;
-    modelProb = pickSide === "home" ? homeProb : 1 - homeProb;
-    impliedProb = pickSide === "home" ? homeImplied! : awayImplied!;
-  } else {
-    pickSide = homeProb >= 0.5 ? "home" : "away";
-    pickTeam = pickSide === "home" ? game.home.name : game.away.name;
-    odds = pickSide === "home" ? homeMLOdds : awayMLOdds;
-    modelProb = pickSide === "home" ? homeProb : 1 - homeProb;
-    impliedProb = 0.5;
-  }
-
-  const rawEdge = modelProb - impliedProb;
-  const cappedEdge = Math.max(-0.08, Math.min(0.08, rawEdge));
-
-  // Confidence starts at the market-implied probability — we respect the market.
-  let confidence = impliedProb * 100;
-
-  if (rawEdge > 0 && modelProb > impliedProb) {
-    confidence += Math.min(8, cappedEdge * 100);
-  }
-  if (rawEdge < 0) {
-    confidence += Math.max(-15, rawEdge * 100);
-  }
-
+  // Small-sample penalties
   if (hPScore.usedFallback || aPScore.usedFallback) confidence -= 5;
   if (hO.usedFallback || aO.usedFallback) confidence -= 5;
 
@@ -199,6 +167,10 @@ export async function analyzeMoneyline(
   confidence += parkAdj;
 
   confidence = Math.max(25, Math.min(88, Math.round(confidence)));
+
+  // Kept for type compatibility; odds-derived fields are no longer used in scoring.
+  const impliedProb = 0.5;
+  const cappedEdge = 0;
 
   const factors: MLFactor[] = [
     {
@@ -240,9 +212,9 @@ export async function analyzeMoneyline(
     { name: "Home field", value: `+${HFA.toFixed(1)}`, weight: pickSide === "home" ? HFA : -HFA },
     { name: `Park: ${park.name}`, value: `Run factor ${park.runs}`, weight: parkAdj },
     {
-      name: "Model vs market",
-      value: `model ${(modelProb * 100).toFixed(0)}% · implied ${(impliedProb * 100).toFixed(0)}% · odds ${odds != null ? americanFmt(odds) : "—"}`,
-      weight: cappedEdge * 100,
+      name: "Model win probability",
+      value: `${(modelProb * 100).toFixed(0)}%`,
+      weight: (modelProb - 0.5) * 20,
     },
   ];
 

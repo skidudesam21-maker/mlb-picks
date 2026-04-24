@@ -109,7 +109,6 @@ export default async function TrackingPage({
                 <tr>
                   <th>Date</th>
                   <th>Pick</th>
-                  <th>Odds</th>
                   <th>Grade</th>
                   <th>Conf</th>
                   <th>Result</th>
@@ -123,7 +122,6 @@ export default async function TrackingPage({
                       {formatPickDateShort(r.date)}
                     </td>
                     <td className="text-paper-100">{r.pick_label}</td>
-                    <td className="font-mono text-xs text-paper-200">{fmtOdds(r.odds)}</td>
                     <td>
                       <span
                         className={`grade ${
