@@ -1,61 +1,26 @@
-import { formatPickDate } from "@/lib/pageHelpers";
-import { PickRow } from "@/lib/db";
+type Tile = {
+  label: string;
+  value: string | number;
+  sub?: string;
+  accent?: "red" | "good" | "default";
+};
 
-function playOfTheDay(picks: PickRow[]): PickRow | null {
-  if (!picks?.length) return null;
-  // Highest confidence pick across today's slate
-  return [...picks].sort((a, b) => b.confidence - a.confidence)[0];
-}
-
-export default function StatTiles({
-  date,
-  gameCount,
-  picks,
-}: {
-  date: any;
-  gameCount: number;
-  picks: PickRow[];
-}) {
-  const potd = playOfTheDay(picks);
-  const totalPicks = picks.length;
-
+export default function StatTiles({ tiles }: { tiles: Tile[] }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <div className="stat-tile">
-        <div className="stat-tile-label">Today</div>
-        <div className="stat-tile-value text-red-400">
-          {formatPickDate(date) || "—"}
+      {tiles.map((t, i) => (
+        <div key={i} className="stat-tile">
+          <div className="stat-tile-label">{t.label}</div>
+          <div
+            className={`stat-tile-value ${
+              t.accent === "red" ? "text-red-400" : t.accent === "good" ? "text-good-400" : ""
+            }`}
+          >
+            {t.value}
+          </div>
+          {t.sub && <div className="stat-tile-sub">{t.sub}</div>}
         </div>
-      </div>
-
-      <div className="stat-tile">
-        <div className="stat-tile-label">Games</div>
-        <div className="stat-tile-value">{gameCount || "—"}</div>
-      </div>
-
-      <div className="stat-tile">
-        <div className="stat-tile-label">Plays</div>
-        <div className="stat-tile-value text-red-400">{totalPicks}</div>
-        <div className="stat-tile-sub">
-          {totalPicks ? `Best: ${potd?.grade ?? "—"} ${potd?.category?.toUpperCase() ?? ""}` : "No picks yet"}
-        </div>
-      </div>
-
-      <div className="stat-tile">
-        <div className="stat-tile-label">Play of the Day</div>
-        <div className="stat-tile-value text-red-400 text-base">
-          {potd ? truncateLabel(potd.pick_label) : "—"}
-        </div>
-        <div className="stat-tile-sub">
-          {potd ? `${potd.category?.toUpperCase()} · conf ${potd.confidence}` : " "}
-        </div>
-      </div>
+      ))}
     </div>
   );
-}
-
-function truncateLabel(s: string): string {
-  if (!s) return "—";
-  if (s.length < 28) return s;
-  return s.slice(0, 26) + "…";
 }

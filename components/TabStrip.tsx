@@ -3,7 +3,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
-  { href: "/", label: "Today's Picks" },
+  { href: "/", label: "NRFI" },
+  { href: "/moneyline", label: "Moneyline" },
+  { href: "/matchups", label: "Matchups" },
   { href: "/tracking", label: "Tracking" },
   { href: "/system", label: "System" },
 ];

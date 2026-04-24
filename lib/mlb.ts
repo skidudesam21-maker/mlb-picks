@@ -170,3 +170,83 @@ export async function getTeamRoster(teamId: number) {
     position: r.position?.abbreviation,
   }));
 }
+
+// Get every MLB team (all 30) with their IDs, names, abbreviations, league.
+export async function getAllMLBTeams() {
+  const url = `${BASE}/teams?sportId=1&activeStatus=ACTIVE`;
+  const data = await fetchJson(url);
+  return (data.teams ?? []).map((t: any) => ({
+    id: t.id,
+    name: t.name,
+    abbrev: t.abbreviation,
+    league: t.league?.name,
+    division: t.division?.name,
+  }));
+}
+
+// Schedule for a team in a season — returns all games with final scores and linescore.
+// Used to compute NRFI records.
+export async function getTeamSchedule(teamId: number, season: number) {
+  const url = `${BASE}/schedule?sportId=1&teamId=${teamId}&season=${season}&gameType=R&hydrate=linescore,probablePitcher,team`;
+  const data = await fetchJson(url);
+  const games: any[] = [];
+  for (const day of data.dates ?? []) {
+    for (const g of day.games ?? []) {
+      games.push(g);
+    }
+  }
+  return games;
+}
+
+// Get all regular-season games for a season (used for pitcher NRFI aggregation).
+// We go team-by-team and dedupe, which is faster than pulling one giant query.
+export async function getAllGamesForSeason(season: number) {
+  const url = `${BASE}/schedule?sportId=1&season=${season}&gameType=R&hydrate=linescore,probablePitcher,team`;
+  const data = await fetchJson(url);
+  const games: any[] = [];
+  for (const day of data.dates ?? []) {
+    for (const g of day.games ?? []) {
+      games.push(g);
+    }
+  }
+  return games;
+}
+
+// Career batter vs. pitcher stats (lifetime, all seasons).
+// Uses stats?stats=vsPlayer on a batter with opposingPlayerId.
+export async function getBatterVsPitcher(batterId: number, pitcherId: number) {
+  const url = `${BASE}/people/${batterId}/stats?stats=vsPlayer&group=hitting&opposingPlayerId=${pitcherId}`;
+  try {
+    const data = await fetchJson(url);
+    // Returned structure contains a vsPlayerTotal split = lifetime totals
+    for (const statGroup of data.stats ?? []) {
+      for (const split of statGroup.splits ?? []) {
+        if (split.split?.description === "vsPlayerTotal" || split.batter?.id === batterId) {
+          const s = split.stat ?? {};
+          return {
+            pa: toNum(s.plateAppearances),
+            ab: toNum(s.atBats),
+            h: toNum(s.hits),
+            hr: toNum(s.homeRuns),
+            rbi: toNum(s.rbi),
+            bb: toNum(s.baseOnBalls),
+            so: toNum(s.strikeOuts),
+            avg: parseFloat(s.avg ?? "0") || 0,
+            obp: parseFloat(s.obp ?? "0") || 0,
+            slg: parseFloat(s.slg ?? "0") || 0,
+            ops: parseFloat(s.ops ?? "0") || 0,
+          };
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function toNum(v: any): number {
+  if (v == null) return 0;
+  const n = typeof v === "string" ? parseInt(v) : v;
+  return isFinite(n) ? n : 0;
+}

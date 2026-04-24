@@ -1,169 +1,90 @@
 import StatTiles from "@/components/StatTiles";
 import TabStrip from "@/components/TabStrip";
-import { getLatestPicks, PickRow } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-async function safeLatestFor(cat: string): Promise<PickRow[]> {
-  try {
-    return await getLatestPicks(cat);
-  } catch {
-    return [];
-  }
-}
+const SEASON = new Date().getFullYear();
 
-export default async function SystemPage() {
-  const [nrfi, ml, hit, k] = await Promise.all([
-    safeLatestFor("nrfi"),
-    safeLatestFor("moneyline"),
-    safeLatestFor("hit"),
-    safeLatestFor("strikeout"),
-  ]);
-  const all = [...nrfi, ...ml, ...hit, ...k];
-  const gameCount = new Set(all.filter((p) => p.game_pk).map((p) => p.game_pk)).size;
-  const latestDate = all.length ? all[0].date : null;
-
+export default function SystemPage() {
   return (
     <div className="space-y-6">
-      <StatTiles date={latestDate} gameCount={gameCount} picks={all} />
+      <StatTiles
+        tiles={[
+          { label: "Season", value: SEASON, accent: "red" },
+          { label: "Tabs", value: 5 },
+          { label: "Daily Crons", value: 2, accent: "red" },
+          { label: "Unit Size", value: `$${process.env.UNIT_SIZE_USD ?? "100"}` },
+        ]}
+      />
       <TabStrip />
 
       <div className="card p-6">
-        <div className="section-label">What is Skogspicks?</div>
+        <div className="section-label">What Skogspicks tracks</div>
         <p className="text-paper-200 leading-relaxed">
-          Skogspicks analyzes every MLB game each morning and produces the <span className="text-red-400 font-mono">top 3 picks</span> in four categories: NRFI, moneyline, batter hit props, and pitcher strikeout props. Each pick gets a letter grade (A+ through F), a confidence score out of 100, and a full factor breakdown showing exactly why the model landed where it did.
+          Skogspicks has three tools: an <span className="text-red-400">NRFI dashboard</span> showing each team's and starting pitcher's 1st-inning scoring records for the current season, a daily <span className="text-red-400">moneyline picks</span> list (top 3, underdogs only up to +150), and a <span className="text-red-400">hitter-vs-pitcher matchup table</span> showing lifetime career stats for every batter in today's lineups against today's starters.
         </p>
       </div>
 
       <div className="card p-6">
-        <div className="section-label">How the Score Works</div>
-        <p className="text-paper-200 leading-relaxed mb-6">
-          Every pick starts from a baseline score and gains or loses points based on the factors below. Lower confidence on weak slates is honest — picks aren't inflated to look better than they are.
+        <div className="section-label">NRFI Dashboard</div>
+        <p className="text-paper-200 leading-relaxed mb-4">
+          Pulled from every regular-season game's first-inning linescore. A team's NRFI record means games that specific team did not score in the 1st inning.
         </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="card p-5 text-center">
-            <div className="font-mono text-2xl text-red-400 font-bold">≥ 80</div>
-            <div className="font-mono text-[10px] tracking-[0.25em] uppercase text-bg-500 mt-1">
-              A grade
-            </div>
-            <div className="text-xs text-paper-300 mt-2">Strong lean</div>
-          </div>
-          <div className="card p-5 text-center">
-            <div className="font-mono text-2xl text-paper-100 font-bold">65–79</div>
-            <div className="font-mono text-[10px] tracking-[0.25em] uppercase text-bg-500 mt-1">
-              B grade
-            </div>
-            <div className="text-xs text-paper-300 mt-2">Moderate lean</div>
-          </div>
-          <div className="card p-5 text-center">
-            <div className="font-mono text-2xl text-bg-400 font-bold">&lt; 65</div>
-            <div className="font-mono text-[10px] tracking-[0.25em] uppercase text-bg-500 mt-1">
-              C or worse
-            </div>
-            <div className="text-xs text-paper-300 mt-2">Thin edge</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="card p-6">
-        <div className="section-label">Factors by Category</div>
-
-        <FactorBlock
-          title="NRFI (No Run First Inning)"
-          rows={[
-            ["Starting pitcher quality", "ERA, WHIP, K/9, BB/9, HR/9 (blended with league avg on small samples)"],
-            ["Recent form", "Last 5 starts ERA"],
-            ["Lineup threat", "Top-4 hitters OPS vs starter's handedness"],
-            ["Park factor", "First-inning run environment adjustment"],
-            ["Weather", "Temperature, wind speed and direction"],
-          ]}
-        />
-
-        <FactorBlock
-          title="Moneyline"
-          rows={[
-            ["Starting pitcher quality", "Full-game projection with small-sample smoothing"],
-            ["Team offense", "OPS + runs/game vs league average"],
-            ["Team pitching", "ERA + WHIP"],
-            ["Recent SP form", "Last 5 starts"],
-            ["Home field advantage", "~3% edge baked in"],
-            ["Market respect", "Base confidence starts at market-implied probability"],
-            ["Odds range", "Only picks at -250 to +180 American (no huge dogs/favorites)"],
-          ]}
-        />
-
-        <FactorBlock
-          title="Batter Hits (Over 0.5 Hits)"
-          rows={[
-            ["Season BA", "Actual and blended"],
-            ["OPS vs opposing hand", "Split-specific performance"],
-            ["Recent form (L15)", "Hot/cold streak"],
-            ["Opposing pitcher", "ERA + strikeout rate"],
-            ["Park factor", "Hit-rate adjustment"],
-            ["Projected PAs", "Based on batting order slot"],
-          ]}
-        />
-
-        <FactorBlock
-          title="Pitcher Strikeouts (Over alt line)"
-          rows={[
-            ["Season K/9, K%", "Requires 6+ K/9 and 30+ IP"],
-            ["Recent workload", "Last 5 starts avg IP and Ks"],
-            ["Opposing team K%", "Season strikeout rate"],
-            ["Park factor", "Run/K environment"],
-            ["Line selection", "Largest line model clears by ≥ 1 K"],
-          ]}
-        />
-      </div>
-
-      <div className="card p-6">
-        <div className="section-label">Data Sources</div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="p-4 bg-bg-800/60 rounded-lg border border-bg-700/60">
-            <div className="font-mono text-xs text-red-400 mb-1">MLB STATS API</div>
-            <div className="text-sm text-paper-200">Schedule, pitcher splits, game logs, boxscores, rosters, weather</div>
-          </div>
-          <div className="p-4 bg-bg-800/60 rounded-lg border border-bg-700/60">
-            <div className="font-mono text-xs text-red-400 mb-1">THE ODDS API</div>
-            <div className="text-sm text-paper-200">Moneyline, NRFI, player prop odds across US sportsbooks</div>
-          </div>
-          <div className="p-4 bg-bg-800/60 rounded-lg border border-bg-700/60">
-            <div className="font-mono text-xs text-red-400 mb-1">LLAMA 3.3 (Groq)</div>
-            <div className="text-sm text-paper-200">Generates writeups from model factors; never invents stats</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="card p-6">
-        <div className="section-label">Honest Caveats</div>
-        <ul className="space-y-2 text-sm text-paper-200 leading-relaxed">
-          <li>• No model reliably beats sportsbooks. A+ picks lose too.</li>
-          <li>• Confidence reflects the model's lean, not a guarantee.</li>
-          <li>• Early-season stats are small samples; the model blends with league averages to avoid overreaction.</li>
-          <li>• Top 3 are shown every day regardless of confidence — a weak slate might mean the #3 pick is only a C+.</li>
-          <li>• Odds are pulled at pick-generation time; closing lines can be different.</li>
+        <ul className="space-y-1.5 text-sm text-paper-200">
+          <li>· <span className="text-red-400 font-mono">Team Batting tab</span> — ranks all 30 teams by NRFI %, with home/away splits and current streak</li>
+          <li>· <span className="text-red-400 font-mono">Starting Pitchers tab</span> — every pitcher who started a game this season, sortable and searchable</li>
+          <li>· <span className="text-red-400 font-mono">Playing Today filter</span> — filter the pitcher table to only those starting today</li>
+          <li>· <span className="text-red-400 font-mono">Streak indicator</span> — consecutive NRFI outings (green) or consecutive runs allowed (red)</li>
         </ul>
       </div>
-    </div>
-  );
-}
 
-function FactorBlock({ title, rows }: { title: string; rows: [string, string][] }) {
-  return (
-    <div className="mt-6 first:mt-0">
-      <div className="font-mono text-sm text-paper-100 font-semibold mb-3">{title}</div>
-      <div className="space-y-0">
-        {rows.map(([name, desc], i) => (
-          <div
-            key={i}
-            className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 py-3 border-b border-bg-700/40 last:border-0"
-          >
-            <div className="font-mono text-xs text-red-400 md:w-48 shrink-0">{name}</div>
-            <div className="text-sm text-paper-200">{desc}</div>
-          </div>
-        ))}
+      <div className="card p-6">
+        <div className="section-label">Moneyline Picks</div>
+        <p className="text-paper-200 leading-relaxed mb-4">
+          Three picks daily. The model scores every game on a team-strength composite (starter quality, offense, bullpen, recent form, home field) and compares to market-implied probability when available.
+        </p>
+        <ul className="space-y-1.5 text-sm text-paper-200">
+          <li>· Only picks underdogs priced at <span className="text-red-400 font-mono">+150 or shorter</span> — no long-shot lottery tickets</li>
+          <li>· Favorites at any price are eligible</li>
+          <li>· If odds aren't available for a game, the pick still shows (the pick-making is the point, not the odds)</li>
+          <li>· Click any card to expand the full factor-by-factor writeup</li>
+          <li>· Letter grade reflects confidence: A (80+), B (65–79), C (50–64), D (&lt;50)</li>
+        </ul>
+      </div>
+
+      <div className="card p-6">
+        <div className="section-label">Hitter vs Pitcher Matchups</div>
+        <p className="text-paper-200 leading-relaxed mb-4">
+          For every game today, we pull each opposing hitter's <span className="text-red-400">lifetime career stats</span> against that day's starting pitcher — all seasons, not just {SEASON}.
+        </p>
+        <ul className="space-y-1.5 text-sm text-paper-200">
+          <li>· Sort any column — PA, AB, H, HR, AVG, OPS, or by name</li>
+          <li>· Filter minimum AB vs that pitcher (5, 10, 15, 25, 40)</li>
+          <li>· Filter minimum BA (.250, .300, .350, .400)</li>
+          <li>· Search any player or team</li>
+        </ul>
+      </div>
+
+      <div className="card p-6">
+        <div className="section-label">Data & Refresh</div>
+        <ul className="space-y-1.5 text-sm text-paper-200">
+          <li>· <span className="text-red-400 font-mono">MLB Stats API</span> — schedule, pitchers, linescores, box scores, rosters, career stats</li>
+          <li>· <span className="text-red-400 font-mono">The Odds API</span> — moneyline odds, used only when available</li>
+          <li>· <span className="text-red-400 font-mono">Llama 3.3 via Groq</span> — writes the pick analysis from model factors</li>
+          <li>· Daily <span className="font-mono">generate</span> cron refreshes: moneyline picks + NRFI team/pitcher stats + today's matchups</li>
+          <li>· Daily <span className="font-mono">grade</span> cron marks past picks as W/L/Push against final box scores</li>
+        </ul>
+      </div>
+
+      <div className="card p-6">
+        <div className="section-label">Honest caveats</div>
+        <ul className="space-y-2 text-sm text-paper-200 leading-relaxed">
+          <li>· Early-season stats are small samples — a 5-game NRFI % is not meaningful. Treat low-games numbers with skepticism.</li>
+          <li>· No model reliably beats the books over long windows. Track, evaluate, don't bet more than you can lose.</li>
+          <li>· Top 3 moneyline picks are shown every day — if the slate is weak, the #3 might only grade a C.</li>
+          <li>· Career vs-pitcher stats include small samples; the min-AB filter helps weed out noise.</li>
+        </ul>
       </div>
     </div>
   );
